@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENDERMAN — The Forest</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+  }
+  #ui {
+    color: #9b59b6;
+    font-size: 13px;
+    margin-bottom: 8px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    opacity: 0.8;
+  }
+  canvas {
+    display: block;
+    border: 1px solid #1a0a2e;
+    image-rendering: pixelated;
+  }
+  #hint {
+    color: #4a2060;
+    font-size: 11px;
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+  #title-screen {
+    position: fixed;
+    inset: 0;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    cursor: pointer;
+  }
+  #title-screen h1 {
+    font-family: 'Courier New', monospace;
+    color: #9b59b6;
+    font-size: 48px;
+    letter-spacing: 8px;
+    text-shadow: 0 0 20px #6c3483, 0 0 40px #6c3483;
+    margin-bottom: 10px;
+  }
+  #title-screen .sub {
+    color: #4a2060;
+    font-size: 16px;
+    letter-spacing: 4px;
+    margin-bottom: 60px;
+  }
+  #title-screen .start {
+    color: #9b59b6;
+    font-size: 14px;
+    letter-spacing: 3px;
+    animation: blink 1.2s infinite;
+  }
+  #title-screen .lore {
+    color: #2d1040;
+    font-size: 11px;
+    letter-spacing: 2px;
+    margin-top: 40px;
+    text-align: center;
+    line-height: 2;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+  #death-screen {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    transition: background 1s;
+  }
+  #death-screen.show { display: flex; }
+  #death-screen h2 {
+    font-family: 'Courier New', monospace;
+    color: #e74c3c;
+    font-size: 36px;
+    letter-spacing: 6px;
+    text-shadow: 0 0 20px #c0392b;
+    margin-bottom: 15px;
+  }
+  #death-screen p {
+    color: #7f8c8d;
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 30px;
+  }
+  #death-screen .restart {
+    color: #9b59b6;
+    font-size: 13px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    animation: blink 1.2s infinite;
+  }
+</style>
+</head>
+<body>
+
+<div id="title-screen" onclick="startGame()">
+  <h1>ENDERMAN</h1>
+  <div class="sub">— the forest —</div>
+  <div class="start">[ click to begin ]</div>
+  <div class="lore">
+    przyjaciel bloków, wróg spojrzeń<br>
+    mieszkaniec The End od 2011 roku<br>
+    ✦ nie patrz mu w oczy ✦
+  </div>
+</div>
+
+<div id="death-screen">
+  <h2>THEY LOOKED AT YOU</h2>
+  <p id="death-stats">blocks collected: 0 | survived: 0s</p>
+  <div class="restart" onclick="restartGame()">[ click to try again ]</div>
+</div>
+
+<div id="ui">
+  <span id="blocks-ui">blocks: 0</span> &nbsp;·&nbsp;
+  <span id="time-ui">00:00</span> &nbsp;·&nbsp;
+  <span id="watchers-ui">watched: 0</span>
+</div>
+<canvas id="c" width="800" height="560"></canvas>
+<div id="hint">WASD · move &nbsp;·&nbsp; ✦ collect grass blocks &nbsp;·&nbsp; avoid the gaze</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// --- WORLD SETUP ---
+const TILE = 32;
+const COLS = 40, ROWS = 40;
+const WORLD_W = COLS * TILE, WORLD_H = ROWS * TILE;
+
+let gameRunning = false;
+let startTime = 0;
+let blocksCollected = 0;
+let watcherCount = 0;
+
+// map: 0=grass, 1=tree, 2=grass_block (collectable)
+let map = [];
+let grassBlocks = []; // {x, y, collected}
+let eyes = []; // creepy floating eyes in background
+let particles = []; // enderman purple particles
+
+// Player
+let player = {
+  x: WORLD_W / 2,
+  y: WORLD_H / 2,
+  w: 10, h: 28,
+  vx: 0, vy: 0,
+  speed: 2.2,
+  teleportCooldown: 0,
+  scared: 0 // fear level when looked at
+};
+
+// Watchers (glowing eyes in dark)
+let watchers = [];
+
+// Camera
+let cam = { x: 0, y: 0 };
+
+// Keys
+const keys = {};
+document.addEventListener('keydown', e => { keys[e.key] = true; e.preventDefault(); });
+document.addEventListener('keyup', e => { keys[e.key] = false; });
+
+function generateWorld() {
+  map = [];
+  grassBlocks = [];
+  watchers = [];
+  eyes = [];
+  particles = [];
+
+  // fill with grass
+  for (let r = 0; r < ROWS; r++) {
+    map[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      map[r][c] = 0;
+    }
+  }
+
+  // place trees (random but not near center spawn)
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cx = c * TILE + TILE/2, cy = r * TILE + TILE/2;
+      const distFromCenter = Math.hypot(cx - WORLD_W/2, cy - WORLD_H/2);
+      if (distFromCenter > 160 && Math.random() < 0.18) {
+        map[r][c] = 1; // tree
+      }
+    }
+  }
+
+  // place collectable grass blocks
+  for (let i = 0; i < 35; i++) {
+    let attempts = 0;
+    while (attempts < 50) {
+      const c = Math.floor(Math.random() * COLS);
+      const r = Math.floor(Math.random() * ROWS);
+      if (map[r][c] === 0) {
+        map[r][c] = 2;
+        grassBlocks.push({ tx: c, ty: r, collected: false });
+        break;
+      }
+      attempts++;
+    }
+  }
+
+  // spawn watchers (creepy eye clusters scattered around)
+  for (let i = 0; i < 12; i++) {
+    const wx = Math.random() * WORLD_W;
+    const wy = Math.random() * WORLD_H;
+    const distFromCenter = Math.hypot(wx - WORLD_W/2, wy - WORLD_H/2);
+    if (distFromCenter > 200) {
+      watchers.push({
+        x: wx, y: wy,
+        eyeOpenness: Math.random(),
+        blinkTimer: Math.random() * 200,
+        gazeRadius: 180 + Math.random() * 120,
+        watching: false,
+        watchTimer: 0
+      });
+    }
+  }
+
+  // floating background eyes (pure ambiance)
+  for (let i = 0; i < 30; i++) {
+    eyes.push({
+      x: Math.random() * WORLD_W,
+      y: Math.random() * WORLD_H,
+      phase: Math.random() * Math.PI * 2,
+      size: 1 + Math.random() * 2
+    });
+  }
+
+  player = {
+    x: WORLD_W / 2,
+    y: WORLD_H / 2,
+    w: 10, h: 28,
+    vx: 0, vy: 0,
+    speed: 2.2,
+    teleportCooldown: 0,
+    scared: 0
+  };
+}
+
+function isBlocked(x, y, w, h) {
+  const left = Math.floor(x / TILE);
+  const right = Math.floor((x + w - 1) / TILE);
+  const top = Math.floor(y / TILE);
+  const bot = Math.floor((y + h - 1) / TILE);
+  for (let r = top; r <= bot; r++) {
+    for (let c = left; c <= right; c++) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return true;
+      if (map[r] && map[r][c] === 1) return true;
+    }
+  }
+  return false;
+}
+
+function checkBlockCollect() {
+  const cx = player.x + player.w / 2;
+  const cy = player.y + player.h / 2;
+  for (const b of grassBlocks) {
+    if (b.collected) continue;
+    const bx = b.tx * TILE + TILE / 2;
+    const by = b.ty * TILE + TILE / 2;
+    if (Math.hypot(cx - bx, cy - by) < TILE * 0.8) {
+      b.collected = true;
+      map[b.ty][b.tx] = 0;
+      blocksCollected++;
+      spawnCollectParticles(bx, by);
+    }
+  }
+}
+
+function spawnCollectParticles(x, y) {
+  for (let i = 0; i < 12; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.5 + Math.random() * 2;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1,
+      color: Math.random() < 0.5 ? '#5d4e37' : '#4a7c3f'
+    });
+  }
+}
+
+let deathTriggered = false;
+
+function update(dt) {
+  if (!gameRunning) return;
+
+  // Movement
+  let dx = 0, dy = 0;
+  if (keys['w'] || keys['ArrowUp']) dy -= 1;
+  if (keys['s'] || keys['ArrowDown']) dy += 1;
+  if (keys['a'] || keys['ArrowLeft']) dx -= 1;
+  if (keys['d'] || keys['ArrowRight']) dx += 1;
+
+  if (dx !== 0 && dy !== 0) { dx *= 0.707; dy *= 0.707; }
+
+  // Enderman moves faster when scared
+  const spd = player.speed + player.scared * 1.5;
+  const nx = player.x + dx * spd;
+  const ny = player.y + dy * spd;
+
+  if (!isBlocked(nx, player.y, player.w, player.h)) player.x = nx;
+  if (!isBlocked(player.x, ny, player.w, player.h)) player.y = ny;
+  player.x = Math.max(0, Math.min(WORLD_W - player.w, player.x));
+  player.y = Math.max(0, Math.min(WORLD_H - player.h, player.y));
+
+  // Collect blocks
+  checkBlockCollect();
+
+  // Teleport (space or shift) if scared
+  if (player.teleportCooldown > 0) player.teleportCooldown--;
+  if ((keys[' '] || keys['Shift']) && player.teleportCooldown === 0 && player.scared > 0.3) {
+    // teleport away from watcher
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 150 + Math.random() * 100;
+    const tx = player.x + Math.cos(angle) * dist;
+    const ty = player.y + Math.sin(angle) * dist;
+    if (tx > 0 && tx < WORLD_W && ty > 0 && ty < WORLD_H) {
+      // particle burst at old position
+      spawnCollectParticles(player.x + player.w/2, player.y + player.h/2);
+      player.x = tx; player.y = ty;
+      player.teleportCooldown = 60;
+    }
+  }
+
+  // Watchers
+  const cx = player.x + player.w / 2;
+  const cy = player.y + player.h / 2;
+  let totalFear = 0;
+  watcherCount = 0;
+
+  for (const w of watchers) {
+    const dist = Math.hypot(cx - w.x, cy - w.y);
+    w.blinkTimer++;
+
+    // Blink animation
+    if (w.blinkTimer > 120 + Math.random() * 80) {
+      w.blinkTimer = 0;
+      w.eyeOpenness = 0;
+    }
+    if (w.eyeOpenness < 1) {
+      w.eyeOpenness = Math.min(1, w.eyeOpenness + 0.08);
+    }
+
+    // Is watching player?
+    if (dist < w.gazeRadius && w.eyeOpenness > 0.5) {
+      w.watching = true;
+      w.watchTimer++;
+      watcherCount++;
+      totalFear += (1 - dist / w.gazeRadius) * 0.015;
+    } else {
+      w.watching = false;
+      if (w.watchTimer > 0) w.watchTimer--;
+    }
+  }
+
+  player.scared = Math.min(1, Math.max(0, player.scared + totalFear - 0.005));
+
+  // Death if watched too long / too scared
+  if (player.scared >= 1 && !deathTriggered) {
+    deathTriggered = true;
+    triggerDeath();
+  }
+
+  // Purple ambient particles from enderman
+  if (Math.random() < 0.15) {
+    particles.push({
+      x: player.x + Math.random() * player.w,
+      y: player.y + Math.random() * player.h,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: -0.5 - Math.random() * 1,
+      life: 1,
+      color: '#6c3483'
+    });
+  }
+
+  // Update particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.life -= 0.02;
+    if (p.life <= 0) particles.splice(i, 1);
+  }
+
+  // Camera follows player
+  cam.x = player.x + player.w / 2 - W / 2;
+  cam.y = player.y + player.h / 2 - H / 2;
+  cam.x = Math.max(0, Math.min(WORLD_W - W, cam.x));
+  cam.y = Math.max(0, Math.min(WORLD_H - H, cam.y));
+
+  // Update UI
+  document.getElementById('blocks-ui').textContent = `blocks: ${blocksCollected}`;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('time-ui').textContent = `${mm}:${ss}`;
+  document.getElementById('watchers-ui').textContent = `watched: ${watcherCount}`;
+}
+
+const TREE_CACHE = (() => {
+  const off = document.createElement('canvas');
+  off.width = TILE; off.height = TILE * 2;
+  const c = off.getContext('2d');
+  // trunk
+  c.fillStyle = '#1a0f0a';
+  c.fillRect(12, 28, 8, 36);
+  // canopy
+  c.fillStyle = '#0d1a0d';
+  c.beginPath();
+  c.arc(16, 20, 18, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = '#0a160a';
+  c.beginPath();
+  c.arc(16, 10, 13, 0, Math.PI * 2);
+  c.fill();
+  return off;
+})();
+
+function draw(t) {
+  ctx.clearRect(0, 0, W, H);
+
+  // Sky/ground
+  ctx.fillStyle = '#020205';
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle ground tiles
+  const startC = Math.floor(cam.x / TILE);
+  const startR = Math.floor(cam.y / TILE);
+  const endC = Math.ceil((cam.x + W) / TILE);
+  const endR = Math.ceil((cam.y + H) / TILE);
+
+  for (let r = startR; r <= endR; r++) {
+    for (let c = startC; c <= endC; c++) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+      const sx = c * TILE - cam.x;
+      const sy = r * TILE - cam.y;
+      const cell = map[r] ? map[r][c] : 0;
+
+      if (cell === 0) {
+        // dark grass
+        ctx.fillStyle = (r + c) % 2 === 0 ? '#030804' : '#040904';
+        ctx.fillRect(sx, sy, TILE, TILE);
+      } else if (cell === 2) {
+        // grass block (collectable)
+        ctx.fillStyle = '#0a1a0a';
+        ctx.fillRect(sx, sy, TILE, TILE);
+        ctx.fillStyle = '#1a3a1a';
+        ctx.fillRect(sx + 2, sy + 2, TILE - 4, 8);
+        ctx.fillStyle = '#143014';
+        ctx.fillRect(sx + 2, sy + 10, TILE - 4, TILE - 12);
+        // glow
+        const grd = ctx.createRadialGradient(sx + TILE/2, sy + TILE/2, 2, sx + TILE/2, sy + TILE/2, TILE);
+        grd.addColorStop(0, 'rgba(30,80,30,0.3)');
+        grd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grd;
+        ctx.fillRect(sx - 4, sy - 4, TILE + 8, TILE + 8);
+      }
+    }
+  }
+
+  // Draw trees (above ground)
+  for (let r = startR; r <= endR; r++) {
+    for (let c = startC; c <= endC; c++) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+      if (map[r] && map[r][c] === 1) {
+        const sx = c * TILE - cam.x;
+        const sy = r * TILE - cam.y;
+        ctx.drawImage(TREE_CACHE, sx, sy - TILE);
+      }
+    }
+  }
+
+  // Ambient floating eyes (far background)
+  for (const e of eyes) {
+    const ex = e.x - cam.x, ey = e.y - cam.y;
+    const dist = Math.hypot(ex - W/2, ey - H/2);
+    if (dist > W * 0.8) continue;
+    const pulse = 0.3 + 0.2 * Math.sin(t * 0.001 + e.phase);
+    ctx.beginPath();
+    ctx.arc(ex, ey, e.size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(100, 40, 130, ${pulse})`;
+    ctx.fill();
+  }
+
+  // Particles
+  for (const p of particles) {
+    const px = p.x - cam.x, py = p.y - cam.y;
+    ctx.beginPath();
+    ctx.arc(px, py, 3 * p.life, 0, Math.PI * 2);
+    ctx.fillStyle = p.color + Math.floor(p.life * 255).toString(16).padStart(2, '0');
+    ctx.fill();
+  }
+
+  // Watchers
+  for (const w of watchers) {
+    const wx = w.x - cam.x, wy = w.y - cam.y;
+    if (wx < -60 || wx > W + 60 || wy < -60 || wy > H + 60) continue;
+
+    // Draw eye glow if watching
+    if (w.watching) {
+      const grd = ctx.createRadialGradient(wx, wy, 0, wx, wy, 80);
+      grd.addColorStop(0, 'rgba(150, 30, 30, 0.12)');
+      grd.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grd;
+      ctx.fillRect(wx - 80, wy - 80, 160, 160);
+    }
+
+    // Eyes
+    const eyeH = w.eyeOpenness * 5;
+    for (let side = -1; side <= 1; side += 2) {
+      const ex = wx + side * 7;
+      ctx.fillStyle = w.watching ? '#ff3030' : '#8b0000';
+      ctx.fillRect(ex - 3, wy - eyeH/2, 6, eyeH);
+      // pupil glow
+      if (w.eyeOpenness > 0.5) {
+        const g = ctx.createRadialGradient(ex, wy, 0, ex, wy, 12);
+        g.addColorStop(0, w.watching ? 'rgba(255,0,0,0.3)' : 'rgba(120,0,0,0.15)');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(ex - 12, wy - 12, 24, 24);
+      }
+    }
+  }
+
+  // Enderman (player)
+  const px = Math.floor(player.x - cam.x);
+  const py = Math.floor(player.y - cam.y);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(px + player.w/2, py + player.h + 2, player.w/2 + 2, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body (very dark, tall)
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(px + 2, py + 10, player.w - 4, player.h - 10); // torso/legs
+
+  // Head
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(px, py, player.w, 10);
+
+  // Purple eyes
+  const eyeGlow = 0.6 + 0.4 * Math.sin(t * 0.003);
+  ctx.fillStyle = `rgba(155, 89, 182, ${eyeGlow})`;
+  ctx.fillRect(px + 1, py + 3, 3, 3);
+  ctx.fillRect(px + 6, py + 3, 3, 3);
+
+  // Eye glow
+  const eg = ctx.createRadialGradient(px + player.w/2, py + 4, 0, px + player.w/2, py + 4, 20);
+  eg.addColorStop(0, `rgba(155, 89, 182, ${eyeGlow * 0.4})`);
+  eg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = eg;
+  ctx.fillRect(px - 15, py - 10, 40, 30);
+
+  // Arms (thin, long)
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(px - 3, py + 10, 3, player.h - 18); // left arm
+  ctx.fillRect(px + player.w, py + 10, 3, player.h - 18); // right arm
+
+  // Fog of war
+  const fogGrd = ctx.createRadialGradient(px + player.w/2, py + player.h/2, 80, px + player.w/2, py + player.h/2, 320);
+  fogGrd.addColorStop(0, 'rgba(0,0,0,0)');
+  fogGrd.addColorStop(0.5, 'rgba(0,0,0,0.1)');
+  fogGrd.addColorStop(1, 'rgba(0,0,0,0.97)');
+  ctx.fillStyle = fogGrd;
+  ctx.fillRect(0, 0, W, H);
+
+  // Fear vignette
+  if (player.scared > 0) {
+    const alpha = player.scared * 0.5;
+    const fv = ctx.createRadialGradient(W/2, H/2, 100, W/2, H/2, W * 0.7);
+    fv.addColorStop(0, 'rgba(0,0,0,0)');
+    fv.addColorStop(1, `rgba(120, 0, 0, ${alpha})`);
+    ctx.fillStyle = fv;
+    ctx.fillRect(0, 0, W, H);
+
+    // screen shake at high fear
+    if (player.scared > 0.7 && Math.random() < player.scared * 0.3) {
+      ctx.globalAlpha = 0.1 * player.scared;
+      ctx.fillStyle = '#300000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // SPACE = teleport hint when watched
+  if (watcherCount > 0 && player.scared > 0.2) {
+    ctx.fillStyle = `rgba(150, 50, 50, ${0.5 + 0.5 * Math.sin(t * 0.01)})`;
+    ctx.font = '11px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('[ SPACE ] teleport', W / 2, H - 20);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function triggerDeath() {
+  gameRunning = false;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  document.getElementById('death-stats').textContent =
+    `blocks collected: ${blocksCollected}  ·  survived: ${elapsed}s`;
+  document.getElementById('death-screen').classList.add('show');
+}
+
+let lastT = 0;
+function loop(t) {
+  const dt = t - lastT;
+  lastT = t;
+  update(dt);
+  draw(t);
+  requestAnimationFrame(loop);
+}
+
+function startGame() {
+  document.getElementById('title-screen').style.display = 'none';
+  blocksCollected = 0;
+  watcherCount = 0;
+  deathTriggered = false;
+  generateWorld();
+  startTime = Date.now();
+  gameRunning = true;
+}
+
+function restartGame() {
+  document.getElementById('death-screen').classList.remove('show');
+  blocksCollected = 0;
+  watcherCount = 0;
+  deathTriggered = false;
+  generateWorld();
+  startTime = Date.now();
+  gameRunning = true;
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
