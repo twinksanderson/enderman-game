@@ -353,6 +353,9 @@ let player = {
 // Watchers (glowing eyes in dark)
 let watchers = [];
 
+// Creepers (hostile mobs that chase the player)
+let creepers = [];
+
 // Camera
 let cam = { x: 0, y: 0 };
 
@@ -427,6 +430,18 @@ function generateWorld() {
       phase: Math.random() * Math.PI * 2,
       size: 1 + Math.random() * 2
     });
+  }
+
+  // Spawn creepers far from center
+  creepers = [];
+  for (let i = 0; i < 3; i++) {
+    let cx, cy, att = 0;
+    do {
+      cx = 64 + Math.random() * (WORLD_W - 128);
+      cy = 64 + Math.random() * (WORLD_H - 128);
+      att++;
+    } while (Math.hypot(cx - WORLD_W/2, cy - WORLD_H/2) < 320 && att < 40);
+    creepers.push({ x: cx, y: cy, w: 14, h: 20, speed: 1.05, chasing: false, exploded: false });
   }
 
   player = {
@@ -570,6 +585,37 @@ function update(dt) {
 
   player.scared = Math.min(1, Math.max(0, player.scared + totalFear - 0.005));
 
+  // Creeper AI
+  for (const cr of creepers) {
+    if (cr.exploded) continue;
+    const dcx = (player.x + player.w/2) - (cr.x + cr.w/2);
+    const dcy = (player.y + player.h/2) - (cr.y + cr.h/2);
+    const cdist = Math.hypot(dcx, dcy);
+
+    cr.chasing = cdist < 230;
+
+    if (cr.chasing) {
+      // Extra fear when creeper closes in
+      player.scared = Math.min(1, player.scared + (1 - cdist / 230) * 0.012);
+
+      // Chase: try full move, then x-only, then y-only
+      const spd = cr.speed;
+      const len = cdist || 1;
+      const ndx = dcx / len, ndy = dcy / len;
+      const nx = cr.x + ndx * spd, ny = cr.y + ndy * spd;
+      if (!isBlocked(nx, ny, cr.w, cr.h)) { cr.x = nx; cr.y = ny; }
+      else if (!isBlocked(nx, cr.y, cr.w, cr.h)) { cr.x = nx; }
+      else if (!isBlocked(cr.x, ny, cr.w, cr.h)) { cr.y = ny; }
+
+      // Kill on contact
+      if (cdist < 20 && !deathTriggered && !winTriggered) {
+        cr.exploded = true;
+        deathTriggered = true;
+        triggerDeath();
+      }
+    }
+  }
+
   // Win condition
   if (blocksCollected >= TOTAL_BLOCKS && !winTriggered) {
     winTriggered = true;
@@ -710,6 +756,41 @@ function draw(t) {
         ctx.drawImage(TREE_CACHE, sx, sy - TILE);
       }
     }
+  }
+
+  // Draw creepers
+  for (const cr of creepers) {
+    if (cr.exploded) continue;
+    const cx2 = cr.x - cam.x, cy2 = cr.y - cam.y;
+
+    // Green glow when chasing
+    if (cr.chasing) {
+      const cg = ctx.createRadialGradient(cx2 + cr.w/2, cy2 + cr.h/2, 2, cx2 + cr.w/2, cy2 + cr.h/2, 36);
+      cg.addColorStop(0, 'rgba(30,120,10,0.3)');
+      cg.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = cg;
+      ctx.fillRect(cx2 - 30, cy2 - 20, cr.w + 60, cr.h + 40);
+    }
+
+    // Body
+    ctx.fillStyle = '#183d0e';
+    ctx.fillRect(cx2 + 1, cy2 + 12, cr.w - 2, cr.h - 12);
+    // Head
+    ctx.fillStyle = '#1e5212';
+    ctx.fillRect(cx2 - 1, cy2, cr.w + 2, 14);
+    // Face: 2 dark eyes
+    ctx.fillStyle = '#0a1a05';
+    ctx.fillRect(cx2 + 2, cy2 + 3, 3, 3); // left eye
+    ctx.fillRect(cx2 + cr.w - 5, cy2 + 3, 3, 3); // right eye
+    // Frown
+    ctx.fillRect(cx2 + 2, cy2 + 9, 2, 2);
+    ctx.fillRect(cx2 + cr.w - 4, cy2 + 9, 2, 2);
+    ctx.fillRect(cx2 + 4, cy2 + 10, cr.w - 8, 2);
+    // Outline
+    ctx.strokeStyle = cr.chasing ? 'rgba(60,180,20,0.5)' : 'rgba(30,80,10,0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx2 - 1, cy2, cr.w + 2, 14);
+    ctx.strokeRect(cx2 + 1, cy2 + 12, cr.w - 2, cr.h - 12);
   }
 
   // Ambient floating eyes (far background)
