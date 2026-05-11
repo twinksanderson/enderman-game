@@ -784,13 +784,26 @@ function draw(t) {
   ctx.ellipse(px + player.w/2, py + player.h + 2, player.w/2 + 2, 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Body (very dark, tall)
-  ctx.fillStyle = '#0a0a0a';
+  // Silhouette glow behind character so it stands out from the background
+  const bodyGlow = ctx.createRadialGradient(px + player.w/2, py + player.h/2, 2, px + player.w/2, py + player.h/2, 28);
+  bodyGlow.addColorStop(0, 'rgba(100, 60, 140, 0.25)');
+  bodyGlow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = bodyGlow;
+  ctx.fillRect(px - 20, py - 10, player.w + 40, player.h + 20);
+
+  // Body — slightly lighter so it contrasts against the near-black ground
+  ctx.fillStyle = '#1e1628';
   ctx.fillRect(px + 2, py + 10, player.w - 4, player.h - 10); // torso/legs
 
+  // Subtle outline on body
+  ctx.strokeStyle = 'rgba(130, 90, 170, 0.35)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 2, py + 10, player.w - 4, player.h - 10);
+
   // Head
-  ctx.fillStyle = '#111111';
+  ctx.fillStyle = '#28203a';
   ctx.fillRect(px, py, player.w, 10);
+  ctx.strokeRect(px, py, player.w, 10);
 
   // Purple eyes
   const eyeGlow = 0.6 + 0.4 * Math.sin(t * 0.003);
@@ -799,14 +812,14 @@ function draw(t) {
   ctx.fillRect(px + 6, py + 3, 3, 3);
 
   // Eye glow
-  const eg = ctx.createRadialGradient(px + player.w/2, py + 4, 0, px + player.w/2, py + 4, 20);
-  eg.addColorStop(0, `rgba(155, 89, 182, ${eyeGlow * 0.4})`);
+  const eg = ctx.createRadialGradient(px + player.w/2, py + 4, 0, px + player.w/2, py + 4, 22);
+  eg.addColorStop(0, `rgba(155, 89, 182, ${eyeGlow * 0.5})`);
   eg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = eg;
   ctx.fillRect(px - 15, py - 10, 40, 30);
 
-  // Arms (thin, long)
-  ctx.fillStyle = '#0a0a0a';
+  // Arms
+  ctx.fillStyle = '#1a1224';
   ctx.fillRect(px - 3, py + 10, 3, player.h - 18); // left arm
   ctx.fillRect(px + player.w, py + 10, 3, player.h - 18); // right arm
 
