@@ -108,6 +108,41 @@
     cursor: pointer;
     animation: blink 1.2s infinite;
   }
+  #win-screen {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  #win-screen.show { display: flex; }
+  #win-screen h2 {
+    font-family: 'Courier New', monospace;
+    color: #9b59b6;
+    font-size: 36px;
+    letter-spacing: 6px;
+    text-shadow: 0 0 30px #6c3483, 0 0 60px #6c3483;
+    margin-bottom: 15px;
+  }
+  #win-screen p {
+    color: #7f8c8d;
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    line-height: 1.8;
+    text-align: center;
+  }
+  #win-screen .restart {
+    color: #9b59b6;
+    font-size: 13px;
+    letter-spacing: 3px;
+    cursor: pointer;
+    animation: blink 1.2s infinite;
+    margin-top: 20px;
+  }
 </style>
 </head>
 <body>
@@ -129,13 +164,20 @@
   <div class="restart" onclick="restartGame()">[ click to try again ]</div>
 </div>
 
+<div id="win-screen">
+  <h2>✦ RETURN TO THE END ✦</h2>
+  <p id="win-stats">all blocks collected<br>time: 0s</p>
+  <p style="color:#4a2060;font-size:11px;letter-spacing:2px;">przyjaciel bloków, wróg spojrzeń</p>
+  <div class="restart" onclick="restartGame()">[ play again ]</div>
+</div>
+
 <div id="ui">
-  <span id="blocks-ui">blocks: 0</span> &nbsp;·&nbsp;
+  <span id="blocks-ui">blocks: 0 / 35</span> &nbsp;·&nbsp;
   <span id="time-ui">00:00</span> &nbsp;·&nbsp;
   <span id="watchers-ui">watched: 0</span>
 </div>
 <canvas id="c" width="800" height="560"></canvas>
-<div id="hint">WASD · move &nbsp;·&nbsp; ✦ collect grass blocks &nbsp;·&nbsp; avoid the gaze</div>
+<div id="hint">WASD · move &nbsp;·&nbsp; ✦ collect all 35 grass blocks to win &nbsp;·&nbsp; SPACE to teleport when scared</div>
 
 <script>
 const canvas = document.getElementById('c');
@@ -304,6 +346,8 @@ function spawnCollectParticles(x, y) {
 }
 
 let deathTriggered = false;
+let winTriggered = false;
+const TOTAL_BLOCKS = 35;
 
 function update(dt) {
   if (!gameRunning) return;
@@ -379,8 +423,14 @@ function update(dt) {
 
   player.scared = Math.min(1, Math.max(0, player.scared + totalFear - 0.005));
 
+  // Win condition
+  if (blocksCollected >= TOTAL_BLOCKS && !winTriggered) {
+    winTriggered = true;
+    triggerWin();
+  }
+
   // Death if watched too long / too scared
-  if (player.scared >= 1 && !deathTriggered) {
+  if (player.scared >= 1 && !deathTriggered && !winTriggered) {
     deathTriggered = true;
     triggerDeath();
   }
@@ -412,7 +462,7 @@ function update(dt) {
   cam.y = Math.max(0, Math.min(WORLD_H - H, cam.y));
 
   // Update UI
-  document.getElementById('blocks-ui').textContent = `blocks: ${blocksCollected}`;
+  document.getElementById('blocks-ui').textContent = `blocks: ${blocksCollected} / ${TOTAL_BLOCKS}`;
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
@@ -622,8 +672,18 @@ function triggerDeath() {
   gameRunning = false;
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   document.getElementById('death-stats').textContent =
-    `blocks collected: ${blocksCollected}  ·  survived: ${elapsed}s`;
+    `blocks collected: ${blocksCollected} / ${TOTAL_BLOCKS}  ·  survived: ${elapsed}s`;
   document.getElementById('death-screen').classList.add('show');
+}
+
+function triggerWin() {
+  gameRunning = false;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+  const ss = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('win-stats').innerHTML =
+    `all 35 blocks collected<br>time: ${mm}:${ss}`;
+  document.getElementById('win-screen').classList.add('show');
 }
 
 let lastT = 0;
@@ -647,9 +707,11 @@ function startGame() {
 
 function restartGame() {
   document.getElementById('death-screen').classList.remove('show');
+  document.getElementById('win-screen').classList.remove('show');
   blocksCollected = 0;
   watcherCount = 0;
   deathTriggered = false;
+  winTriggered = false;
   generateWorld();
   startTime = Date.now();
   gameRunning = true;
