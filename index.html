@@ -665,6 +665,31 @@ function draw(t) {
     ctx.fillText('[ SPACE ] teleport', W / 2, H - 20);
   }
 
+  // Fear bar (top of canvas)
+  const barW = 200, barH = 8;
+  const barX = W / 2 - barW / 2, barY = 12;
+  // background
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+  // label
+  ctx.font = '10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(120,40,40,0.8)';
+  ctx.fillText('FEAR', W / 2, barY - 3);
+  // fill
+  if (player.scared > 0) {
+    const fearFill = player.scared * barW;
+    const r = Math.floor(80 + player.scared * 175);
+    const g = Math.floor(20 * (1 - player.scared));
+    ctx.fillStyle = `rgb(${r},${g},20)`;
+    ctx.fillRect(barX, barY, fearFill, barH);
+    // pulse at high fear
+    if (player.scared > 0.7) {
+      ctx.fillStyle = `rgba(255,255,255,${0.1 * Math.sin(t * 0.02)})`;
+      ctx.fillRect(barX, barY, fearFill, barH);
+    }
+  }
+
   ctx.textAlign = 'left';
 }
 
