@@ -320,6 +320,10 @@
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
+
+// Preload textures
+const IMG_FACE = new Image(); IMG_FACE.src = 'face.png';
+const IMG_KREMOWKA = new Image(); IMG_KREMOWKA.src = 'kremowka.png';
 const W = canvas.width, H = canvas.height;
 
 // --- WORLD SETUP ---
@@ -683,19 +687,19 @@ function draw(t) {
         ctx.fillStyle = (r + c) % 2 === 0 ? '#030804' : '#040904';
         ctx.fillRect(sx, sy, TILE, TILE);
       } else if (cell === 2) {
-        // grass block (collectable)
-        ctx.fillStyle = '#0a1a0a';
-        ctx.fillRect(sx, sy, TILE, TILE);
-        ctx.fillStyle = '#1a3a1a';
-        ctx.fillRect(sx + 2, sy + 2, TILE - 4, 8);
-        ctx.fillStyle = '#143014';
-        ctx.fillRect(sx + 2, sy + 10, TILE - 4, TILE - 12);
-        // glow
-        const grd = ctx.createRadialGradient(sx + TILE/2, sy + TILE/2, 2, sx + TILE/2, sy + TILE/2, TILE);
-        grd.addColorStop(0, 'rgba(30,80,30,0.3)');
-        grd.addColorStop(1, 'rgba(0,0,0,0)');
-        ctx.fillStyle = grd;
-        ctx.fillRect(sx - 4, sy - 4, TILE + 8, TILE + 8);
+        // kremówka block (collectable)
+        if (IMG_KREMOWKA.complete && IMG_KREMOWKA.naturalWidth > 0) {
+          ctx.drawImage(IMG_KREMOWKA, sx + 1, sy + 1, TILE - 2, TILE - 2);
+          // subtle glow
+          const grd = ctx.createRadialGradient(sx + TILE/2, sy + TILE/2, 2, sx + TILE/2, sy + TILE/2, TILE);
+          grd.addColorStop(0, 'rgba(255,230,150,0.2)');
+          grd.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = grd;
+          ctx.fillRect(sx - 4, sy - 4, TILE + 8, TILE + 8);
+        } else {
+          ctx.fillStyle = '#0a1a0a';
+          ctx.fillRect(sx, sy, TILE, TILE);
+        }
       }
     }
   }
@@ -788,19 +792,18 @@ function draw(t) {
   ctx.fillStyle = '#0a0a0a';
   ctx.fillRect(px + 2, py + 10, player.w - 4, player.h - 10); // torso/legs
 
-  // Head
-  ctx.fillStyle = '#111111';
-  ctx.fillRect(px, py, player.w, 10);
+  // Head — face texture
+  if (IMG_FACE.complete && IMG_FACE.naturalWidth > 0) {
+    ctx.drawImage(IMG_FACE, px - 2, py - 2, player.w + 4, 14);
+  } else {
+    ctx.fillStyle = '#111111';
+    ctx.fillRect(px, py, player.w, 10);
+  }
 
-  // Purple eyes
+  // Purple eye glow (always rendered for ambiance)
   const eyeGlow = 0.6 + 0.4 * Math.sin(t * 0.003);
-  ctx.fillStyle = `rgba(155, 89, 182, ${eyeGlow})`;
-  ctx.fillRect(px + 1, py + 3, 3, 3);
-  ctx.fillRect(px + 6, py + 3, 3, 3);
-
-  // Eye glow
   const eg = ctx.createRadialGradient(px + player.w/2, py + 4, 0, px + player.w/2, py + 4, 20);
-  eg.addColorStop(0, `rgba(155, 89, 182, ${eyeGlow * 0.4})`);
+  eg.addColorStop(0, `rgba(155, 89, 182, ${eyeGlow * 0.3})`);
   eg.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = eg;
   ctx.fillRect(px - 15, py - 10, 40, 30);
