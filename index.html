@@ -623,8 +623,6 @@ function update(dt) {
   }
 }
 
-const TREE_IMG = new Image();
-TREE_IMG.src = 'tree.png';
 const TREE_CACHE = (() => {
   const off = document.createElement('canvas');
   off.width = TILE; off.height = TILE * 2;
@@ -693,16 +691,7 @@ function draw(t) {
       if (map[r] && map[r][c] === 1) {
         const sx = c * TILE - cam.x;
         const sy = r * TILE - cam.y;
-        if (TREE_IMG.complete && TREE_IMG.naturalWidth > 0) {
-          // draw the custom texture, centered on the tile, darkened for atmosphere
-          ctx.save();
-          ctx.globalAlpha = 0.85;
-          ctx.drawImage(TREE_IMG, sx - 2, sy - TILE + 4, TILE + 4, TILE + 4);
-          ctx.globalAlpha = 1;
-          ctx.restore();
-        } else {
-          ctx.drawImage(TREE_CACHE, sx, sy - TILE);
-        }
+        ctx.drawImage(TREE_CACHE, sx, sy - TILE);
       }
     }
   }
