@@ -16,23 +16,143 @@
     font-family: 'Courier New', monospace;
     overflow: hidden;
   }
-  #ui {
-    color: #9b59b6;
-    font-size: 13px;
-    margin-bottom: 8px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    opacity: 0.8;
+  .game-wrap {
+    position: relative;
+    display: inline-block;
   }
   canvas {
     display: block;
-    border: 1px solid #1a0a2e;
+    border: 2px solid #1a0a2e;
     image-rendering: pixelated;
   }
-  #hint {
+  /* RPG HUD overlay */
+  #hud {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font-family: 'Courier New', monospace;
+  }
+  /* Fear bar - bottom center */
+  #hud-fear {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 260px;
+    text-align: center;
+  }
+  #hud-fear .label {
+    color: #8b1a1a;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-bottom: 4px;
+    text-shadow: 0 0 8px #8b1a1a;
+  }
+  #hud-fear .bar-frame {
+    background: #0a0005;
+    border: 1px solid #3a0a0a;
+    border-radius: 2px;
+    padding: 2px;
+    box-shadow: 0 0 6px rgba(100,0,0,0.4), inset 0 0 4px rgba(0,0,0,0.8);
+    position: relative;
+  }
+  #hud-fear .bar-frame::before,
+  #hud-fear .bar-frame::after {
+    content: '✦';
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #3a0a0a;
+    font-size: 10px;
+  }
+  #hud-fear .bar-frame::before { left: -14px; }
+  #hud-fear .bar-frame::after  { right: -14px; }
+  #hud-fear .bar-inner {
+    height: 14px;
+    width: 0%;
+    background: linear-gradient(90deg, #1a0505, #8b0000);
+    border-radius: 1px;
+    transition: width 0.1s, background 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  #hud-fear .bar-inner::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 60%);
+  }
+  #hud-fear .bar-bg { background: #0d0005; height: 14px; border-radius: 1px; }
+
+  /* Blocks - bottom left */
+  #hud-blocks {
+    position: absolute;
+    bottom: 16px;
+    left: 14px;
+    background: rgba(5,0,15,0.8);
+    border: 1px solid #2a1040;
+    border-radius: 2px;
+    padding: 6px 10px;
+    box-shadow: 0 0 8px rgba(80,0,120,0.3);
+  }
+  #hud-blocks .lbl {
     color: #4a2060;
-    font-size: 11px;
-    margin-top: 8px;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  #hud-blocks .val {
+    color: #9b59b6;
+    font-size: 16px;
+    letter-spacing: 1px;
+    line-height: 1.2;
+    text-shadow: 0 0 8px #6c3483;
+  }
+
+  /* Timer - bottom right */
+  #hud-timer {
+    position: absolute;
+    bottom: 16px;
+    right: 14px;
+    background: rgba(5,0,15,0.8);
+    border: 1px solid #2a1040;
+    border-radius: 2px;
+    padding: 6px 10px;
+    text-align: right;
+    box-shadow: 0 0 8px rgba(80,0,120,0.3);
+  }
+  #hud-timer .lbl {
+    color: #4a2060;
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  #hud-timer .val {
+    color: #9b59b6;
+    font-size: 16px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 8px #6c3483;
+  }
+
+  /* Watched indicator - top right */
+  #hud-watched {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    color: #5a0000;
+    font-size: 10px;
+    letter-spacing: 2px;
+    text-shadow: 0 0 6px #8b0000;
+    text-align: right;
+    transition: color 0.2s;
+  }
+  #hud-watched.active { color: #cc2020; text-shadow: 0 0 10px #ff0000; }
+
+  #hint {
+    color: #2a1040;
+    font-size: 10px;
+    margin-top: 6px;
     letter-spacing: 1px;
   }
   #title-screen {
@@ -171,12 +291,30 @@
   <div class="restart" onclick="restartGame()">[ play again ]</div>
 </div>
 
-<div id="ui">
-  <span id="blocks-ui">blocks: 0 / 35</span> &nbsp;·&nbsp;
-  <span id="time-ui">00:00</span> &nbsp;·&nbsp;
-  <span id="watchers-ui">watched: 0</span>
+<div class="game-wrap">
+  <canvas id="c" width="800" height="560"></canvas>
+  <div id="hud">
+    <div id="hud-blocks">
+      <div class="lbl">blocks</div>
+      <div class="val" id="blocks-ui">0 / 35</div>
+    </div>
+    <div id="hud-fear">
+      <div class="label">✦ &nbsp; fear &nbsp; ✦</div>
+      <div class="bar-frame">
+        <div class="bar-bg">
+          <div class="bar-inner" id="fear-bar"></div>
+        </div>
+      </div>
+    </div>
+    <div id="hud-timer">
+      <div class="lbl">time</div>
+      <div class="val" id="time-ui">00:00</div>
+    </div>
+    <div id="hud-watched">
+      <span id="watchers-ui">· · ·</span>
+    </div>
+  </div>
 </div>
-<canvas id="c" width="800" height="560"></canvas>
 <div id="hint">WASD · move &nbsp;·&nbsp; ✦ collect all 35 grass blocks to win &nbsp;·&nbsp; SPACE to teleport when scared</div>
 
 <script>
@@ -461,13 +599,28 @@ function update(dt) {
   cam.x = Math.max(0, Math.min(WORLD_W - W, cam.x));
   cam.y = Math.max(0, Math.min(WORLD_H - H, cam.y));
 
-  // Update UI
-  document.getElementById('blocks-ui').textContent = `blocks: ${blocksCollected} / ${TOTAL_BLOCKS}`;
+  // Update HUD
+  document.getElementById('blocks-ui').textContent = `${blocksCollected} / ${TOTAL_BLOCKS}`;
   const elapsed = Math.floor((Date.now() - startTime) / 1000);
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
   const ss = String(elapsed % 60).padStart(2, '0');
   document.getElementById('time-ui').textContent = `${mm}:${ss}`;
-  document.getElementById('watchers-ui').textContent = `watched: ${watcherCount}`;
+  // Fear bar
+  const fearPct = Math.round(player.scared * 100);
+  const fearBar = document.getElementById('fear-bar');
+  fearBar.style.width = fearPct + '%';
+  const r = Math.floor(30 + player.scared * 139);
+  fearBar.style.background = `linear-gradient(90deg, #1a0505, rgb(${r},0,0))`;
+  // Watched
+  const watchedEl = document.getElementById('watchers-ui');
+  const watchedParent = document.getElementById('hud-watched');
+  if (watcherCount > 0) {
+    watchedEl.textContent = `👁 WATCHED (${watcherCount})`;
+    watchedParent.classList.add('active');
+  } else {
+    watchedEl.textContent = '· · ·';
+    watchedParent.classList.remove('active');
+  }
 }
 
 const TREE_CACHE = (() => {
@@ -657,37 +810,12 @@ function draw(t) {
     }
   }
 
-  // SPACE = teleport hint when watched
-  if (watcherCount > 0 && player.scared > 0.2) {
-    ctx.fillStyle = `rgba(150, 50, 50, ${0.5 + 0.5 * Math.sin(t * 0.01)})`;
-    ctx.font = '11px Courier New';
+  // SPACE hint flash when scared
+  if (watcherCount > 0 && player.scared > 0.3 && player.teleportCooldown === 0) {
+    ctx.fillStyle = `rgba(180, 60, 60, ${0.4 + 0.4 * Math.sin(t * 0.015)})`;
+    ctx.font = 'bold 12px Courier New';
     ctx.textAlign = 'center';
-    ctx.fillText('[ SPACE ] teleport', W / 2, H - 20);
-  }
-
-  // Fear bar (top of canvas)
-  const barW = 200, barH = 8;
-  const barX = W / 2 - barW / 2, barY = 12;
-  // background
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
-  // label
-  ctx.font = '10px Courier New';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = 'rgba(120,40,40,0.8)';
-  ctx.fillText('FEAR', W / 2, barY - 3);
-  // fill
-  if (player.scared > 0) {
-    const fearFill = player.scared * barW;
-    const r = Math.floor(80 + player.scared * 175);
-    const g = Math.floor(20 * (1 - player.scared));
-    ctx.fillStyle = `rgb(${r},${g},20)`;
-    ctx.fillRect(barX, barY, fearFill, barH);
-    // pulse at high fear
-    if (player.scared > 0.7) {
-      ctx.fillStyle = `rgba(255,255,255,${0.1 * Math.sin(t * 0.02)})`;
-      ctx.fillRect(barX, barY, fearFill, barH);
-    }
+    ctx.fillText('[ SPACE ] TELEPORT', W / 2, H / 2 + 140);
   }
 
   ctx.textAlign = 'left';
